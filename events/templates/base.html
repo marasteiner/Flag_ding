@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Sport Events Organizer</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        header { margin-bottom: 20px; }
+        nav a { margin-right: 10px; }
+        .container { max-width: 800px; margin: auto; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+        table, th, td { border: 1px solid #ccc; }
+        th, td { padding: 10px; text-align: left; }
+        form { margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+    <header>
+        <nav>
+            {% if user.is_authenticated %}
+                Logged in as {{ user.username }} |
+                <a href="{% url 'logout' %}">Logout</a>
+                {% if user.is_staff %}
+                    | <a href="{% url 'admin_dashboard' %}">Admin Dashboard</a>
+                {% else %}
+                    | <a href="{% url 'players' %}">My Players</a>
+                    | <a href="{% url 'tournaments' %}">Tournaments</a>
+                    <!-- Add the Scorecard link here -->
+                    | <a href="{% url 'scorecard_home' %}">Scorecard</a>
+                {% endif %}
+            {% else %}
+                <a href="{% url 'login' %}">Login</a>
+            {% endif %}
+        </nav>
+    </header>
+    <div class="container">
+        {% block content %}{% endblock %}
+    </div>
+</body>
+</html>

@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Coin Toss for Game #{{ game.id }}</h2>
+<p>{{ game.team1.username }} vs {{ game.team2.username }}</p>
+
+<form method="post">
+    {% csrf_token %}
+    <p>
+        <label>Who won the coin toss?</label><br>
+        <input type="radio" name="coin_toss_winner" value="team1" checked> {{ game.team1.username }}<br>
+        <input type="radio" name="coin_toss_winner" value="team2"> {{ game.team2.username }}
+    </p>
+    <p>
+        <label>Which team starts on offense?</label><br>
+        <input type="radio" name="offense" value="team1" checked> {{ game.team1.username }}<br>
+        <input type="radio" name="offense" value="team2"> {{ game.team2.username }}
+    </p>
+    <button type="submit">Spiel starten</button>
+</form>
+{% endblock %}

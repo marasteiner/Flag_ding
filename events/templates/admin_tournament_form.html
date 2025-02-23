@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>{{ action }} Tournament</h2>
+
+<!-- Tournament Edit Form -->
+<form method="post">
+    {% csrf_token %}
+    <p>
+        <label>Date:
+            <input type="date" name="date" value="{{ tournament.date|date:'Y-m-d' }}" required>
+        </label>
+    </p>
+    <p>
+        <label>Name:
+            <input type="text" name="name" value="{{ tournament.name }}" required>
+        </label>
+    </p>
+    <p>
+        <label>Location:
+            <input type="text" name="location" value="{{ tournament.location }}" required>
+        </label>
+    </p>
+    <p>
+        <label>Max Teams:
+            <input type="number" name="max_teams" value="{{ tournament.max_teams }}" required>
+        </label>
+    </p>
+    <p>
+        <label>Number of Teams:
+            <input type="number" name="number_of_teams" value="{{ tournament.number_of_teams }}" required>
+        </label>
+    </p>
+    <button type="submit" name="edit_tournament">Update Tournament</button>
+</form>
+
+<hr>
+
+<!-- Participating Teams Overview -->
+<h3>Participating Teams</h3>
+{% if participating_apps %}
+    <table border="1" cellspacing="0" cellpadding="5">
+        <tr>
+            <th>Team Name</th>
+            <th>Username</th>
+            <th>Email</th>
+            <th>Action</th>
+        </tr>
+        {% for app in participating_apps %}
+        <tr>
+            <td>{{ app.team.first_name }}</td>
+            <td>{{ app.team.username }}</td>
+            <td>{{ app.team.email }}</td>
+            <td>
+                <form method="post" action="{% url 'admin_tournament_remove_team' tournament.id app.team.id %}" style="display:inline;">
+                    {% csrf_token %}
+                    <button type="submit" onclick="return confirm('Are you sure you want to remove this team?');">Remove</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </table>
+{% else %}
+    <p>No teams participating yet.</p>
+{% endif %}
+
+<hr>
+
+<!-- Add Team Form Section -->
+<h3>Add Team to Tournament</h3>
+<form method="post">
+    {% csrf_token %}
+    {{ add_team_form.as_p }}
+    <button type="submit" name="add_team_submit">Add Team</button>
+</form>
+
+<p><a href="{% url 'admin_tournaments' %}">Back to Tournaments</a></p>
+{% endblock %}

@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>{{ tournament.name }} - Schedule & Standings</h2>
+<p>Date: {{ tournament.date }}</p>
+<p>Location: {{ tournament.location }}</p>
+
+<h3>Games</h3>
+{% if games %}
+    <table border="1" cellspacing="0" cellpadding="5">
+        <tr>
+            <th>Team 1</th>
+            <th>Team 2</th>
+            <th>Referee</th>
+            <th>Start Time</th>
+            <th>Score</th>
+        </tr>
+        {% for game in games %}
+        <tr>
+            <td>{{ game.team1.username }}</td>
+            <td>{{ game.team2.username }}</td>
+            <td>{{ game.referee.username }}</td>
+            <td>{{ game.start_time|time:"H:i" }}</td>
+            <td>
+                {% if game.team1_score is not None and game.team2_score is not None %}
+                    {{ game.team1_score }} - {{ game.team2_score }}
+                {% else %}
+                    -
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </table>
+{% else %}
+    <p>No schedule exists.</p>
+{% endif %}
+
+<h3>Final Standings</h3>
+{% if standings %}
+    <table border="1" cellspacing="0" cellpadding="5">
+        <tr>
+            <th>Rank</th>
+            <th>Team</th>
+            <th>Raw Points</th>
+            <th>Final Points</th>
+        </tr>
+        {% for entry in standings %}
+        <tr>
+            <td>{{ entry.rank }}</td>
+            <td>{{ entry.team.first_name }} ({{ entry.team.username }})</td>
+            <td>{{ entry.raw_points }}</td>
+            <td>{{ entry.final_points }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+{% else %}
+    <p>No standings available.</p>
+{% endif %}
+{% endblock %}

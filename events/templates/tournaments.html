@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% load custom_tags %}
+{% block content %}
+<h2>Available Tournaments</h2>
+<table>
+    <tr>
+        <th>Date</th>
+        <th>Name</th>
+        <th>Location</th>
+        <th>Application Status</th>
+        <th>Action</th>
+        <th>Details</th>
+    </tr>
+    {% for tournament in tournaments %}
+    <tr>
+        <td>{{ tournament.date }}</td>
+        <td>{{ tournament.name }}</td>
+        <td>{{ tournament.location }}</td>
+        <td>
+            {% if tournament.id in app_status %}
+                {% with application=app_status|get_item:tournament.id %}
+                    {% if application.approved %}
+                        Approved
+                    {% else %}
+                        Pending
+                    {% endif %}
+                {% endwith %}
+            {% else %}
+                Not Applied
+            {% endif %}
+        </td>
+        <td>
+            {% if tournament.id not in app_status %}
+                <a href="{% url 'apply_tournament' tournament.id %}">Apply</a>
+            {% endif %}
+        </td>
+        <td>
+            <a href="{% url 'tournament_detail' tournament.id %}">View Details</a>
+        </td>
+    </tr>
+    {% endfor %}
+</table>
+{% endblock %}

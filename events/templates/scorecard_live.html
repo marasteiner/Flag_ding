@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Scorecard for Game #{{ game.id }}</h2>
+<p>
+    <strong>Teams:</strong> {{ game.team1.username }} (Team1) vs {{ game.team2.username }} (Team2)<br>
+    <strong>Score:</strong> 
+    {{ game.team1.username }}: {{ game.team1_score|default:0 }} - 
+    {{ game.team2.username }}: {{ game.team2_score|default:0 }}
+</p>
+
+<p>
+    <strong>Offense:</strong>
+    {% if game.offense_is_team1 %}
+        <span style="color: blue; font-weight: bold;">{{ game.team1.username }}</span> (Team1)
+    {% else %}
+        <span style="color: blue; font-weight: bold;">{{ game.team2.username }}</span> (Team2)
+    {% endif %}
+    <a href="{% url 'switch_offense' game.id %}">[Switch Offense]</a>
+</p>
+
+<hr>
+
+<!-- Scoring Buttons -->
+<h3>Record a Scoring Event</h3>
+<form method="post" action="{% url 'record_score_event' game.id %}">
+    {% csrf_token %}
+    <p>
+        <label>Trikot Nummer: 
+            <input type="number" name="trikot">
+        </label>
+    </p>
+    <p>
+        <button type="submit" name="event_type" value="TD">Touchdown (6 pts to offense)</button>
+        <button type="submit" name="event_type" value="PAT1">1-Point-Try</button>
+        <button type="submit" name="event_type" value="PAT2">2-Point-Try</button>
+        <button type="submit" name="event_type" value="SAFETY">Safety (2 pts to defense)</button>
+    </p>
+</form>
+
+<hr>
+
+<h3>Scoring Events</h3>
+<table border="1" cellspacing="0" cellpadding="5">
+    <tr>
+        <th>Time</th>
+        <th>Event</th>
+        <th>Trikot</th>
+        <th>Points</th>
+    </tr>
+    {% for ev in game.score_events.all %}
+    <tr>
+        <td>{{ ev.created_at|time:"H:i:s" }}</td>
+        <td>{{ ev.get_event_type_display }}</td>
+        <td>{{ ev.trikot }}</td>
+        <td>+{{ ev.points_awarded }}</td>
+    </tr>
+    {% endfor %}
+</table>
+
+{% endblock %}

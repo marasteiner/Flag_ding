@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block content %}
+<!-- Login button in the top-right corner (only if not logged in) -->
+<div style="text-align: right; margin-bottom: 10px;">
+    {% if not user.is_authenticated %}
+        <a href="{% url 'login' %}" style="font-weight: bold;">Login</a>
+    {% endif %}
+</div>
+
+<h2>Overall Team Standings</h2>
+{% if overall_standings %}
+    <table border="1" cellspacing="0" cellpadding="5">
+        <tr>
+            <th>Rank</th>
+            <th>Team</th>
+            <th>Total Final Points</th>
+        </tr>
+        {% for entry in overall_standings %}
+        <tr>
+            <td>{{ forloop.counter }}</td>
+            <td>{{ entry.team.first_name }} ({{ entry.team.username }})</td>
+            <td>{{ entry.total_final_points }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+{% else %}
+    <p>No overall standings available.</p>
+{% endif %}
+
+<hr>
+
+<h2>All Tournaments</h2>
+{% if tournaments %}
+    <table border="1" cellspacing="0" cellpadding="5">
+        <tr>
+            <th>Date</th>
+            <th>Name</th>
+            <th>Location</th>
+            <th>Details</th>
+        </tr>
+        {% for tournament in tournaments %}
+        <tr>
+            <td>{{ tournament.date }}</td>
+            <td>{{ tournament.name }}</td>
+            <td>{{ tournament.location }}</td>
+            <td><a href="{% url 'tournament_detail' tournament.id %}">View Details</a></td>
+        </tr>
+        {% endfor %}
+    </table>
+{% else %}
+    <p>No tournaments available.</p>
+{% endif %}
+{% endblock %}

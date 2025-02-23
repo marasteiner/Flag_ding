@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Add New Team</h2>
+<form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Add Team</button>
+</form>
+<p><a href="{% url 'admin_dashboard' %}">Back to Dashboard</a></p>
+{% endblock %}

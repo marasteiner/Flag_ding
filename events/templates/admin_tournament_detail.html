@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Tournament Detail: {{ tournament.name }}</h2>
+<p>Date: {{ tournament.date }}</p>
+<p>Location: {{ tournament.location }}</p>
+<p>Max Teams: {{ tournament.max_teams }}</p>
+<p>Number of Teams: {{ tournament.number_of_teams }}</p>
+
+<h3>Approved Teams (Random Order Used for Scheduling):</h3>
+<ul>
+    {% for team in teams %}
+    <li>{{ team.first_name }} ({{ team.username }})</li>
+    {% empty %}
+    <li>No approved teams.</li>
+    {% endfor %}
+</ul>
+
+<h3>Existing Schedule:</h3>
+{% if games %}
+    <table>
+        <tr>
+            <th>Time</th>
+            <th>Team A</th>
+            <th>Team B</th>
+            <th>Referee</th>
+            {% if tournament.applications.count == 5 %}
+            <th>Field</th>
+            {% endif %}
+        </tr>
+        {% for game in games %}
+        <tr>
+            <td>{{ game.start_time|time:"H:i" }}</td>
+            <td>{{ game.team1.username }}</td>
+            <td>{{ game.team2.username }}</td>
+            <td>{{ game.referee.username }}</td>
+            {% if game.field_number %}
+            <td>{{ game.field_number }}</td>
+            {% endif %}
+        </tr>
+        {% endfor %}
+    </table>
+{% else %}
+    <p>No schedule exists.</p>
+{% endif %}
+
+<form action="{% url 'create_schedule' tournament.id %}" method="post">
+    {% csrf_token %}
+    <button type="submit">Create Schedule</button>
+</form>
+
+<p><a href="{% url 'admin_tournaments' %}">Back to Tournaments</a></p>
+{% endblock %}

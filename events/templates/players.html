@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>My Players</h2>
+
+<table>
+    <tr>
+        <th>Trikot</th>
+        <th>Vorname</th>
+        <th>Nachname</th>
+        <th>Passnummer</th>
+        <th>Action</th>
+    </tr>
+    {% for player in players %}
+    <tr>
+        <td>{{ player.trikot }}</td>
+        <td>{{ player.vorname }}</td>
+        <td>{{ player.nachname }}</td>
+        <td>{{ player.passnummer }}</td>
+        <td><a href="{% url 'delete_player' player.id %}">Delete</a></td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="5">No players added yet.</td></tr>
+    {% endfor %}
+</table>
+
+<h3>Add a New Player</h3>
+<form method="post">
+    {% csrf_token %}
+    <p>
+        <label>Trikot: <input type="number" name="trikot" required></label>
+    </p>
+    <p>
+        <label>Vorname: <input type="text" name="vorname" required></label>
+    </p>
+    <p>
+        <label>Nachname: <input type="text" name="nachname" required></label>
+    </p>
+    <p>
+        <label>Passnummer: <input type="text" name="passnummer" required></label>
+    </p>
+    <button type="submit">Add Player</button>
+</form>
+{% endblock %}

@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Manage Games for {{ tournament.name }}</h2>
+
+<!-- Button to generate schedule -->
+<p>
+    <a href="{% url 'create_schedule' tournament.id %}">Generate Schedule</a>
+</p>
+
+<h3>Existing Games</h3>
+{% if games %}
+    <table border="1" cellspacing="0" cellpadding="5">
+        <tr>
+            <th>Time</th>
+            <th>Team A</th>
+            <th>Team B</th>
+            <th>Referee</th>
+            <th>Score</th>
+            <th>Update Score</th>
+        </tr>
+        {% for game in games %}
+        <tr>
+            <td>{{ game.start_time|time:"H:i" }}</td>
+            <td>{{ game.team1.username }}</td>
+            <td>{{ game.team2.username }}</td>
+            <td>{{ game.referee.username }}</td>
+            <td>
+                {% if game.team1_score is not None and game.team2_score is not None %}
+                    {{ game.team1_score }} - {{ game.team2_score }}
+                {% else %}
+                    -
+                {% endif %}
+            </td>
+            <td>
+                <form action="{% url 'update_game_score' game.id %}" method="post">
+                    {% csrf_token %}
+                    <input type="number" name="team1_score" placeholder="Team 1 Score" value="{{ game.team1_score|default_if_none:'' }}" style="width:60px;">
+                    <input type="number" name="team2_score" placeholder="Team 2 Score" value="{{ game.team2_score|default_if_none:'' }}" style="width:60px;">
+                    <button type="submit">Update</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </table>
+{% else %}
+    <p>No schedule exists.</p>
+{% endif %}
+
+<!-- Tournament Results Table -->
+<h3>Final Standings</h3>
+{% if standings %}
+    <table border="1" cellspacing="0" cellpadding="5">
+        <tr>
+            <th>Rank</th>
+            <th>Team</th>
+            <th>Raw Points</th>
+            <th>Final Points</th>
+        </tr>
+        {% for entry in standings %}
+        <tr>
+            <td>{{ entry.rank }}</td>
+            <td>{{ entry.team.first_name }} ({{ entry.team.username }})</td>
+            <td>{{ entry.raw_points }}</td>
+            <td>{{ entry.final_points }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+{% else %}
+    <p>No standings available.</p>
+{% endif %}
+
+<p><a href="{% url 'admin_tournaments' %}">Back to Tournaments</a></p>
+{% endblock %}

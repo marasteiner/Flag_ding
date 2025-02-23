@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Scorecard Home</h2>
+
+<h3>Select a Tournament</h3>
+<form method="get">
+    <select name="tournament_id" onchange="this.form.submit()">
+        <option value="">-- Choose a Tournament --</option>
+        {% for t in approved_tournaments %}
+            <option value="{{ t.id }}"
+                {% if selected_tournament and selected_tournament.id == t.id %}selected{% endif %}>
+                {{ t.name }}
+            </option>
+        {% endfor %}
+    </select>
+</form>
+
+{% if selected_tournament %}
+    <h4>Games where you are referee:</h4>
+    {% if referee_games %}
+        <ul>
+            {% for g in referee_games %}
+            <li>
+                <strong>{{ g.team1.username }} vs {{ g.team2.username }}</strong>
+                <a href="{% url 'scorecard_coin_toss' g.id %}">Start Scorecard</a>
+            </li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <p>No games found where you are referee.</p>
+    {% endif %}
+{% endif %}
+{% endblock %}

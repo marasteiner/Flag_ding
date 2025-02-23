@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Tournament Applications</h2>
+<table>
+    <tr>
+        <th>Team</th>
+        <th>Tournament</th>
+        <th>Applied At</th>
+        <th>Approved</th>
+        <th>Action</th>
+    </tr>
+    {% for app in applications %}
+    <tr>
+        <td>{{ app.team.username }}</td>
+        <td>{{ app.tournament.name }}</td>
+        <td>{{ app.applied_at }}</td>
+        <td>{{ app.approved }}</td>
+        <td>
+            {% if not app.approved %}
+                <a href="{% url 'approve_application' app.id %}">Approve</a>
+            {% else %}
+                -
+            {% endif %}
+        </td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="5">No applications found.</td></tr>
+    {% endfor %}
+</table>
+{% endblock %}

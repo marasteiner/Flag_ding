@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Admin Dashboard</h2>
+
+<p>
+    <a href="{% url 'admin_team_add' %}">Add New Team</a>
+</p>
+
+<h3>Registered Teams</h3>
+<table>
+    <tr>
+        <th>Team Name</th>
+        <th>Username</th>
+        <th>Email</th>
+        <th>Actions</th>
+    </tr>
+    {% for team in teams %}
+    <tr>
+        <td><a href="{% url 'admin_team_players' team.id %}">{{ team.first_name }}</a></td>
+        <td>{{ team.username }}</td>
+        <td>{{ team.email }}</td>
+        <td>
+            <a href="{% url 'admin_team_edit' team.id %}">Edit</a>
+        </td>
+    </tr>
+    {% empty %}
+    <tr>
+        <td colspan="4">No teams registered.</td>
+    </tr>
+    {% endfor %}
+</table>
+
+<ul>
+    <li><a href="{% url 'admin_tournaments' %}">Manage Tournaments</a></li>
+    <li><a href="{% url 'admin_applications' %}">Manage Tournament Applications</a></li>
+</ul>
+{% endblock %}

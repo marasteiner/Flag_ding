@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Custom Admin Tournaments</h2>
+
+<!-- Link to the separate page for creating a new tournament -->
+<p>
+    <a href="{% url 'admin_tournament_create' %}">Create New Tournament</a>
+</p>
+
+<!-- Overall Standings Table -->
+<h3>Overall Team Standings</h3>
+{% if overall_standings %}
+    <table border="1" cellspacing="0" cellpadding="5">
+        <tr>
+            <th>Rank</th>
+            <th>Team</th>
+            <th>Total Final Points</th>
+        </tr>
+        {% for entry in overall_standings %}
+        <tr>
+            <td>{{ forloop.counter }}</td>
+            <td>{{ entry.team.first_name }} ({{ entry.team.username }})</td>
+            <td>{{ entry.total_final_points }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+{% else %}
+    <p>No overall standings available.</p>
+{% endif %}
+
+<!-- List of Tournaments -->
+<h3>List of Tournaments</h3>
+<table border="1" cellspacing="0" cellpadding="5">
+    <tr>
+        <th>Date</th>
+        <th>Name</th>
+        <th>Location</th>
+        <th>Actions</th>
+    </tr>
+    {% for tournament in tournaments %}
+    <tr>
+        <td>{{ tournament.date }}</td>
+        <td>{{ tournament.name }}</td>
+        <td>{{ tournament.location }}</td>
+        <td>
+            <a href="{% url 'admin_tournament_edit' tournament.id %}">Edit</a> |
+            <a href="{% url 'admin_tournament_detail' tournament.id %}">Detail</a> |
+            <a href="{% url 'admin_games' tournament.id %}">Manage Games</a>
+        </td>
+    </tr>
+    {% empty %}
+    <tr>
+        <td colspan="4">No tournaments available.</td>
+    </tr>
+    {% endfor %}
+</table>
+{% endblock %}
