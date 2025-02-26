@@ -20,4 +20,6 @@ urlpatterns = [
     path('tournaments/<int:tournament_id>/create_schedule/', views.create_schedule, name='create_schedule'),
     path('tournaments/<int:tournament_id>/remove_team/<int:team_id>/', views.admin_tournament_remove_team, name='admin_tournament_remove_team'),
     path('games/update_score/<int:game_id>/', views.update_game_score, name='update_game_score'),
+    path('officials/', views.admin_official_assignments, name='admin_official_assignments'),  # NEW
+
 ]

@@ -43,7 +43,7 @@ class Game(models.Model):
     team2_score = models.IntegerField(null=True, blank=True)
     field_number = models.IntegerField(null=True, blank=True)  # Only used for 5-team tournaments
 
-    # New fields for coin toss & offense
+    # coin toss fields
     coin_toss_winner_is_team1 = models.BooleanField(default=True)
     offense_is_team1 = models.BooleanField(default=True)
 
@@ -51,24 +51,38 @@ class Game(models.Model):
         return f"{self.team1.username} vs {self.team2.username} at {self.start_time}"
 
 class ScoreEvent(models.Model):
-    """
-    Records each scoring event in a game:
-    - event_type: "TD", "PAT1", "PAT2", "SAFETY"
-    - trikot: the trikot number entered by the user
-    - points_awarded: how many points this event contributed
-    """
     EVENT_TYPES = [
         ("TD", "Touchdown"),
         ("PAT1", "1-Point-Try"),
         ("PAT2", "2-Point-Try"),
         ("SAFETY", "Safety"),
     ]
-
     game = models.ForeignKey(Game, on_delete=models.CASCADE, related_name='score_events')
     event_type = models.CharField(max_length=10, choices=EVENT_TYPES)
     trikot = models.IntegerField(null=True, blank=True)
     points_awarded = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    # NEW FIELD: which team was awarded the points
+    awarded_to_team1 = models.BooleanField(default=False)
+
     def __str__(self):
         return f"{self.event_type} for game {self.game.id} (+{self.points_awarded} points)"
+
+# -------------------------
+# New OfficialAssignment model
+# -------------------------
+class OfficialAssignment(models.Model):
+    ROLE_CHOICES = [
+        ("REF", "Referee"),
+        ("DJ", "Down Judge"),
+        ("FJ", "Field Judge"),
+        ("SJ", "Side Judge"),
+    ]
+    game = models.ForeignKey(Game, on_delete=models.CASCADE, related_name='official_assignments')
+    role = models.CharField(max_length=3, choices=ROLE_CHOICES)
+    name = models.CharField(max_length=100)
+    license_number = models.CharField(max_length=50)
+
+    def __str__(self):
+        return f"{self.get_role_display()} {self.name} (License: {self.license_number}) for Game {self.game.id}"

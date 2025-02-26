@@ -7,12 +7,14 @@ from django.contrib.auth.models import User
 from django.contrib.auth.views import LoginView, LogoutView
 from django.urls import reverse_lazy
 from django.contrib import messages
+
 from .models import (
     Player,
     Tournament,
     TournamentApplication,
     Game,
-    ScoreEvent,  # For the live scorecard feature
+    ScoreEvent,
+    OfficialAssignment,
 )
 from .forms import (
     GameForm,
@@ -22,109 +24,344 @@ from .forms import (
     AddTeamToTournamentForm,
 )
 
-# -----------------------------------------
-# Helper decorator for admin-only views
-# -----------------------------------------
 def admin_required(view_func):
     decorated_view_func = login_required(user_passes_test(lambda u: u.is_staff)(view_func))
     return decorated_view_func
 
-# -----------------------------------------
-# Utility functions for standings
-# -----------------------------------------
-FINAL_POINTS_MAPPING = {
-    3: [6, 4, 2],
-    4: [8, 6, 4, 2],
-    5: [9, 7, 5, 3, 2],
-}
+############################################
+# Helper to get per-team stats in one tournament
+############################################
+def get_team_stats_in_tournament(team, tournament):
+    """
+    Return a dict:
+      {
+        'points': total 2/1/0 from W/T,
+        'pf': total points scored,
+        'pa': total points allowed,
+        'pd': pf - pa,
+        'games': number of completed games,
+        'opponents': {
+            opponent_user: {
+                'points_for': X,
+                'points_against': Y,
+                'result_points': 2/1/0
+            }, ...
+        }
+      }
+    This is used for tie-break logic (head-to-head).
+    """
+    from collections import defaultdict
+    stats = {
+        'points': 0,
+        'pf': 0,
+        'pa': 0,
+        'pd': 0,
+        'games': 0,
+        'opponents': defaultdict(lambda: {'points_for':0, 'points_against':0, 'result_points':0}),
+    }
+    # Only consider completed games (both scores not None)
+    all_games = tournament.games.filter(team1_score__isnull=False, team2_score__isnull=False)
+    for g in all_games:
+        if g.team1 == team or g.team2 == team:
+            stats['games'] += 1
+            if g.team1 == team:
+                pf = g.team1_score
+                pa = g.team2_score
+                opp = g.team2
+            else:
+                pf = g.team2_score
+                pa = g.team1_score
+                opp = g.team1
+            stats['pf'] += pf
+            stats['pa'] += pa
+            # 2/1/0 for W/T/L
+            if pf > pa:
+                rp = 2
+            elif pf == pa:
+                rp = 1
+            else:
+                rp = 0
+            stats['points'] += rp
+            stats['opponents'][opp]['points_for'] += pf
+            stats['opponents'][opp]['points_against'] += pa
+            stats['opponents'][opp]['result_points'] += rp
+
+    stats['pd'] = stats['pf'] - stats['pa']
+    return stats
+
+############################################
+# Tie-break for single tournament
+############################################
+from functools import cmp_to_key
+
+def tie_break_teams_in_tournament(tournament, team_list):
+    """
+    team_list: list of dicts with keys: ['team','points','pf','pa','pd'].
+    If teams are tied on 'points', apply tie-break steps:
+      1) head-to-head percentage
+      2) head-to-head net point differential
+      3) head-to-head points scored
+      4) total net point differential
+      5) total points scored
+    """
+    # Build stats map for head-to-head checks
+    stats_map = {}
+    for d in team_list:
+        t = d['team']
+        stats_map[t] = get_team_stats_in_tournament(t, tournament)
+
+    def compare(a, b):
+        # First compare total points descending
+        if a['points'] != b['points']:
+            return b['points'] - a['points']
+
+        # tie => apply step by step
+        A = a['team']
+        B = b['team']
+        Astats = stats_map[A]
+        Bstats = stats_map[B]
+
+        # Step 1: head-to-head
+        if B in Astats['opponents'] and A in Bstats['opponents']:
+            A_head_points = Astats['opponents'][B]['result_points']
+            B_head_points = Bstats['opponents'][A]['result_points']
+            if A_head_points != B_head_points:
+                return B_head_points - A_head_points
+            # Step 2: head-to-head net diff
+            A_head_pd = Astats['opponents'][B]['points_for'] - Astats['opponents'][B]['points_against']
+            B_head_pd = Bstats['opponents'][A]['points_for'] - Bstats['opponents'][A]['points_against']
+            if A_head_pd != B_head_pd:
+                return B_head_pd - A_head_pd
+            # Step 3: head-to-head points scored
+            A_head_pf = Astats['opponents'][B]['points_for']
+            B_head_pf = Bstats['opponents'][A]['points_for']
+            if A_head_pf != B_head_pf:
+                return B_head_pf - A_head_pf
+
+        # Step 4: total net point differential
+        if a['pd'] != b['pd']:
+            return b['pd'] - a['pd']
+        # Step 5: total points scored
+        if a['pf'] != b['pf']:
+            return b['pf'] - a['pf']
+
+        # still tied => alphabetical
+        if A.username < B.username:
+            return -1
+        elif A.username > B.username:
+            return 1
+        else:
+            return 0
+
+    sorted_list = sorted(team_list, key=cmp_to_key(compare))
+    return sorted_list
 
 def compute_tournament_standings(tournament):
     """
-    Compute raw points for each team in a tournament based on final game scores,
-    then assign final points from a mapping if the tournament has 3, 4, or 5 teams.
+    Return a list of dicts:
+      {
+        'team': <User>,
+        'points': <int>,
+        'pf': <int>,
+        'pa': <int>,
+        'pd': <int>,
+        'rank': <int>,
+      }
     """
     apps = TournamentApplication.objects.filter(tournament=tournament, approved=True)
-    teams = {app.team: 0 for app in apps}
-    # Only count games where both scores are set
-    games = tournament.games.filter(team1_score__isnull=False, team2_score__isnull=False)
-    for game in games:
-        if game.team1 in teams:
-            if game.team1_score > game.team2_score:
-                teams[game.team1] += 2
-            elif game.team1_score == game.team2_score:
-                teams[game.team1] += 1
-        if game.team2 in teams:
-            if game.team2_score > game.team1_score:
-                teams[game.team2] += 2
-            elif game.team2_score == game.team1_score:
-                teams[game.team2] += 1
+    data = []
+    for app in apps:
+        team = app.team
+        st = get_team_stats_in_tournament(team, tournament)
+        data.append({
+            'team': team,
+            'points': st['points'],
+            'pf': st['pf'],
+            'pa': st['pa'],
+            'pd': st['pd'],
+        })
+    sorted_list = tie_break_teams_in_tournament(tournament, data)
+    rank = 1
+    out = []
+    for item in sorted_list:
+        item['rank'] = rank
+        out.append(item)
+        rank += 1
+    return out
 
-    # Sort teams by raw points desc, then username
-    sorted_teams = sorted(teams.items(), key=lambda x: (-x[1], x[0].username))
-    n = len(sorted_teams)
-    mapping = FINAL_POINTS_MAPPING.get(n)
-    standings = []
-    if mapping:
-        for rank, (team, raw_points) in enumerate(sorted_teams, start=1):
-            final_points = mapping[rank-1]
-            standings.append({
-                'team': team,
-                'raw_points': raw_points,
-                'final_points': final_points,
-                'rank': rank,
-            })
-    else:
-        # If number of teams isn't 3,4,5, just store raw points
-        for rank, (team, raw_points) in enumerate(sorted_teams, start=1):
-            standings.append({
-                'team': team,
-                'raw_points': raw_points,
-                'final_points': None,
-                'rank': rank,
-            })
-    return standings
+############################################
+# Overall Standings (best 5 tournaments)
+# Tie-break:
+#   1) fewer tournaments
+#   2) wins/games
+#   3) PD/games
+#   4) PF/games
+#   5) PA/games
+############################################
+def gather_team_tournament_stats(team, tournament):
+    st = get_team_stats_in_tournament(team, tournament)
+    # st has 'points', 'pf', 'pa', 'games'
+    # we can figure out wins/ties/losses from the actual game records:
+    all_games = tournament.games.filter(team1_score__isnull=False, team2_score__isnull=False)
+    w = 0
+    t = 0
+    l = 0
+    for g in all_games:
+        if g.team1 == team or g.team2 == team:
+            if g.team1 == team:
+                pf = g.team1_score
+                pa = g.team2_score
+            else:
+                pf = g.team2_score
+                pa = g.team1_score
+            if pf > pa:
+                w += 1
+            elif pf == pa:
+                t += 1
+            else:
+                l += 1
+    return {
+        'points': st['points'],
+        'pf': st['pf'],
+        'pa': st['pa'],
+        'pd': st['pd'],
+        'games': st['games'],
+        'wins': w,
+        'ties': t,
+        'losses': l,
+    }
 
 def compute_overall_standings():
-    """
-    Compute overall final points across all tournaments for each team.
-    """
-    overall = {}
-    tournaments = Tournament.objects.all()
-    for tournament in tournaments:
-        stands = compute_tournament_standings(tournament)
-        for entry in stands:
-            team = entry['team']
-            pts = entry['final_points'] or 0
-            overall[team] = overall.get(team, 0) + pts
-    # Sort by descending total_final_points, then username
-    sorted_overall = sorted(overall.items(), key=lambda x: (-x[1], x[0].username))
-    return [
-        {'team': team, 'total_final_points': pts}
-        for team, pts in sorted_overall
-    ]
+    from collections import defaultdict
+    all_teams = User.objects.filter(is_staff=False)
+    # build (team -> list of tournament-stats)
+    team_data = defaultdict(list)
 
-# -----------------------------------------
-# Custom Login/Logout Views
-# -----------------------------------------
+    # gather all tournaments for which the user has an approved application
+    for team in all_teams:
+        apps = TournamentApplication.objects.filter(team=team, approved=True)
+        for app in apps:
+            st = gather_team_tournament_stats(team, app.tournament)
+            # only add if the team actually has at least 1 completed game
+            if st['games'] > 0:
+                team_data[team].append(st)
+
+    # pick best 5 for each team
+    def compare_tstats(a, b):
+        # sort descending by 'points', then PD, then PF
+        if a['points'] != b['points']:
+            return b['points'] - a['points']
+        if a['pd'] != b['pd']:
+            return b['pd'] - a['pd']
+        if a['pf'] != b['pf']:
+            return b['pf'] - a['pf']
+        return 0
+
+    results = []
+    for team in all_teams:
+        stats_list = team_data[team]
+        if not stats_list:
+            # no tournaments
+            results.append({
+                'team': team,
+                'used_tournaments': 0,
+                'total_points': 0,
+                'wins': 0,
+                'ties': 0,
+                'losses': 0,
+                'pf': 0,
+                'pa': 0,
+                'pd': 0,
+            })
+            continue
+        sorted_stats = sorted(stats_list, key=cmp_to_key(compare_tstats))
+        best_5 = sorted_stats[:5]
+        sum_points = sum(x['points'] for x in best_5)
+        sum_wins = sum(x['wins'] for x in best_5)
+        sum_ties = sum(x['ties'] for x in best_5)
+        sum_losses = sum(x['losses'] for x in best_5)
+        sum_pf = sum(x['pf'] for x in best_5)
+        sum_pa = sum(x['pa'] for x in best_5)
+        sum_pd = sum_pf - sum_pa
+        used = len(best_5)
+
+        results.append({
+            'team': team,
+            'used_tournaments': used,
+            'total_points': sum_points,
+            'wins': sum_wins,
+            'ties': sum_ties,
+            'losses': sum_losses,
+            'pf': sum_pf,
+            'pa': sum_pa,
+            'pd': sum_pd,
+        })
+
+    def compare_overall(a, b):
+        if a['total_points'] != b['total_points']:
+            return b['total_points'] - a['total_points']
+
+        # 1) fewer tournaments
+        if a['used_tournaments'] != b['used_tournaments']:
+            return a['used_tournaments'] - b['used_tournaments']
+        # 2) wins/games
+        a_g = a['wins'] + a['ties'] + a['losses']
+        b_g = b['wins'] + b['ties'] + b['losses']
+        a_wg = a['wins']/a_g if a_g else 0.0
+        b_wg = b['wins']/b_g if b_g else 0.0
+        if abs(a_wg - b_wg) > 1e-9:
+            return -1 if (b_wg < a_wg) else 1 if (b_wg > a_wg) else 0
+        # 3) PD/games
+        a_pdg = a['pd']/a_g if a_g else 0.0
+        b_pdg = b['pd']/b_g if b_g else 0.0
+        if abs(a_pdg - b_pdg) > 1e-9:
+            return -1 if (b_pdg < a_pdg) else 1 if (b_pdg > a_pdg) else 0
+        # 4) PF/games
+        a_pfg = a['pf']/a_g if a_g else 0.0
+        b_pfg = b['pf']/b_g if b_g else 0.0
+        if abs(a_pfg - b_pfg) > 1e-9:
+            return -1 if (b_pfg < a_pfg) else 1 if (b_pfg > a_pfg) else 0
+        # 5) PA/games
+        a_pag = a['pa']/a_g if a_g else 0.0
+        b_pag = b['pa']/b_g if b_g else 0.0
+        if abs(a_pag - b_pag) > 1e-9:
+            return -1 if (b_pag < a_pag) else 1 if (b_pag > a_pag) else 0
+        # final fallback => alphabetical
+        A = a['team'].username
+        B = b['team'].username
+        if A < B:
+            return -1
+        elif A > B:
+            return 1
+        else:
+            return 0
+
+    sorted_res = sorted(results, key=cmp_to_key(compare_overall))
+    rank = 1
+    final = []
+    for item in sorted_res:
+        item['rank'] = rank
+        final.append(item)
+        rank += 1
+    return final
+
+###########################################
+# Custom Login/Logout
+###########################################
 class CustomLoginView(LoginView):
     def get_success_url(self):
-        # After login, redirect all users (admin or team) to home page "/"
         return '/'
 
 class CustomLogoutView(LogoutView):
     http_method_names = ['get', 'post']
     def get_next_page(self):
-        # Always redirect to home page "/" after logout
         return '/'
 
-# -----------------------------------------
+###########################################
 # Team (non-admin) Views
-# -----------------------------------------
+###########################################
 @login_required
 def players_view(request):
-    """
-    Allows a non-admin user to manage their players.
-    """
     if request.user.is_staff:
         return HttpResponseForbidden("Admins cannot access team player management.")
     if request.method == 'POST':
@@ -146,9 +383,6 @@ def players_view(request):
 
 @login_required
 def delete_player(request, player_id):
-    """
-    Allows a non-admin user to delete one of their players.
-    """
     player = get_object_or_404(Player, id=player_id)
     if player.team != request.user:
         return HttpResponseForbidden("You cannot delete this player.")
@@ -157,9 +391,6 @@ def delete_player(request, player_id):
 
 @login_required
 def tournaments_view(request):
-    """
-    Lists all tournaments for a non-admin user, showing their application status.
-    """
     if request.user.is_staff:
         return HttpResponseForbidden("Admins cannot access team tournament page.")
     tournaments = Tournament.objects.all()
@@ -169,9 +400,6 @@ def tournaments_view(request):
 
 @login_required
 def apply_tournament(request, tournament_id):
-    """
-    A non-admin user can apply to a tournament (creates a TournamentApplication).
-    """
     if request.user.is_staff:
         return HttpResponseForbidden("Admins cannot apply for tournaments.")
     tournament = get_object_or_404(Tournament, id=tournament_id)
@@ -180,24 +408,24 @@ def apply_tournament(request, tournament_id):
 
 @login_required
 def tournament_detail(request, tournament_id):
-    """
-    Shows the schedule and final standings for a given tournament (non-admin view).
-    """
     if request.user.is_staff:
         return HttpResponseForbidden("Admins cannot access team tournament detail page.")
     tournament = get_object_or_404(Tournament, id=tournament_id)
     games = tournament.games.all().order_by('start_time')
+    all_finished = True
+    for g in games:
+        if g.team1_score is None or g.team2_score is None:
+            all_finished = False
+            break
     standings = compute_tournament_standings(tournament)
     return render(request, 'tournament_detail.html', {
         'tournament': tournament,
         'games': games,
         'standings': standings,
+        'all_finished': all_finished,
     })
 
 def index(request):
-    """
-    Public home page: lists all tournaments and displays the overall standings table.
-    """
     tournaments = Tournament.objects.all()
     overall_standings = compute_overall_standings()
     return render(request, 'index.html', {
@@ -205,14 +433,11 @@ def index(request):
         'overall_standings': overall_standings,
     })
 
-# -----------------------------------------
-# Scorecard Flow (for referees)
-# -----------------------------------------
+###########################################
+# Scorecard (referee) Views
+###########################################
 @login_required
 def scorecard_home(request):
-    """
-    Lists tournaments where the user is approved. Then shows games where user is the referee.
-    """
     if request.user.is_staff:
         return HttpResponseForbidden("Admins cannot use the team scorecard.")
     approved_apps = TournamentApplication.objects.filter(team=request.user, approved=True)
@@ -233,13 +458,26 @@ def scorecard_home(request):
 
 @login_required
 def scorecard_coin_toss(request, game_id):
-    """
-    Page to handle coin toss result and who starts on offense.
-    """
     game = get_object_or_404(Game, id=game_id, referee=request.user)
     if request.method == 'POST':
-        coin_toss_winner = request.POST.get('coin_toss_winner')  # "team1" or "team2"
-        offense = request.POST.get('offense')  # "team1" or "team2"
+        OfficialAssignment.objects.filter(game=game).delete()
+
+        ref_name = request.POST.get('ref_name')
+        ref_license = request.POST.get('ref_license')
+        dj_name = request.POST.get('dj_name')
+        dj_license = request.POST.get('dj_license')
+        fj_name = request.POST.get('fj_name')
+        fj_license = request.POST.get('fj_license')
+        sj_name = request.POST.get('sj_name')
+        sj_license = request.POST.get('sj_license')
+
+        OfficialAssignment.objects.create(game=game, role="REF", name=ref_name, license_number=ref_license)
+        OfficialAssignment.objects.create(game=game, role="DJ", name=dj_name, license_number=dj_license)
+        OfficialAssignment.objects.create(game=game, role="FJ", name=fj_name, license_number=fj_license)
+        OfficialAssignment.objects.create(game=game, role="SJ", name=sj_name, license_number=sj_license)
+
+        coin_toss_winner = request.POST.get('coin_toss_winner')
+        offense = request.POST.get('offense')
         game.coin_toss_winner_is_team1 = (coin_toss_winner == 'team1')
         game.offense_is_team1 = (offense == 'team1')
         game.save()
@@ -248,93 +486,76 @@ def scorecard_coin_toss(request, game_id):
 
 @login_required
 def scorecard_live(request, game_id):
-    """
-    The main scoreboard page for referees: displays current score, which team is on offense,
-    and buttons for Touchdown, PAT, Safety, etc. We store events in ScoreEvent.
-    """
     game = get_object_or_404(Game, id=game_id, referee=request.user)
     return render(request, 'scorecard_live.html', {'game': game})
 
+def recompute_game_score(game):
+    team1_total = 0
+    team2_total = 0
+    for ev in game.score_events.all():
+        if ev.awarded_to_team1:
+            team1_total += ev.points_awarded
+        else:
+            team2_total += ev.points_awarded
+    game.team1_score = team1_total
+    game.team2_score = team2_total
+    game.save()
+
 @login_required
 def record_score_event(request, game_id):
-    """
-    Receives POST data for a scoring event, updates ScoreEvent, updates Game scores accordingly.
-    """
     game = get_object_or_404(Game, id=game_id, referee=request.user)
     if request.method == 'POST':
-        event_type = request.POST.get('event_type')  # "TD", "PAT1", "PAT2", "SAFETY"
+        event_type = request.POST.get('event_type')
         trikot_str = request.POST.get('trikot')
         trikot_num = None
         try:
             trikot_num = int(trikot_str) if trikot_str else None
         except ValueError:
             pass
+        awarding_team_is_team1 = game.offense_is_team1
+        if event_type == 'SAFETY':
+            awarding_team_is_team1 = not awarding_team_is_team1
 
-        offense_is_team1 = game.offense_is_team1
         points_awarded = 0
-
         if event_type == 'TD':
-            # 6 points to offense
             points_awarded = 6
         elif event_type == 'PAT1':
-            # 1 point to offense
             points_awarded = 1
         elif event_type == 'PAT2':
-            # 2 points to offense
             points_awarded = 2
         elif event_type == 'SAFETY':
-            # 2 points for the defense
-            offense_is_team1 = not offense_is_team1
             points_awarded = 2
 
-        # Create ScoreEvent
         ScoreEvent.objects.create(
             game=game,
             event_type=event_type,
             trikot=trikot_num,
             points_awarded=points_awarded,
+            awarded_to_team1=awarding_team_is_team1,
         )
-
-        # Update the actual game scores
-        if event_type == 'SAFETY':
-            # awarding to the defense
-            if offense_is_team1:
-                if game.team1_score is None:
-                    game.team1_score = 0
-                game.team1_score += points_awarded
-            else:
-                if game.team2_score is None:
-                    game.team2_score = 0
-                game.team2_score += points_awarded
-        else:
-            # awarding to the offense
-            if offense_is_team1:
-                if game.team1_score is None:
-                    game.team1_score = 0
-                game.team1_score += points_awarded
-            else:
-                if game.team2_score is None:
-                    game.team2_score = 0
-                game.team2_score += points_awarded
-
-        game.save()
+        recompute_game_score(game)
         messages.success(request, f"Event {event_type} recorded with trikot {trikot_num}.")
     return redirect('scorecard_live', game_id=game.id)
 
 @login_required
 def switch_offense(request, game_id):
-    """
-    Toggle which team is on offense.
-    """
     game = get_object_or_404(Game, id=game_id, referee=request.user)
     game.offense_is_team1 = not game.offense_is_team1
     game.save()
     return redirect('scorecard_live', game_id=game.id)
 
+@login_required
+def delete_score_event(request, game_id, event_id):
+    game = get_object_or_404(Game, id=game_id)
+    if game.referee != request.user:
+        return HttpResponseForbidden("You are not the referee for this game.")
+    ev = get_object_or_404(ScoreEvent, id=event_id, game=game)
+    ev.delete()
+    recompute_game_score(game)
+    messages.success(request, "Scoring event deleted successfully.")
+    return redirect('scorecard_live', game_id=game.id)
+
 def scoreboard_data(request, tournament_id):
-    """
-    Returns JSON of the scoreboard for all games in a tournament. For auto-refresh on home screen.
-    """
     tournament = get_object_or_404(Tournament, id=tournament_id)
     games = tournament.games.all().order_by('start_time')
     data = []
@@ -349,9 +570,9 @@ def scoreboard_data(request, tournament_id):
         })
     return JsonResponse({'games': data})
 
-# -----------------------------------------
+###########################################
 # Admin (staff) Views
-# -----------------------------------------
+###########################################
 @admin_required
 def admin_dashboard(request):
     teams = User.objects.filter(is_staff=False)
@@ -384,12 +605,8 @@ def admin_team_edit(request, team_id):
 
 @admin_required
 def admin_tournaments(request):
-    """
-    Renders a list of all tournaments and the overall standings table,
-    with no inline creation form. There's a link to create a new tournament
-    on a separate page.
-    """
     tournaments = Tournament.objects.all()
+    # Show the overall table with PF, PA, PD using best-5 logic
     overall_standings = compute_overall_standings()
     return render(request, 'admin_tournaments.html', {
         'tournaments': tournaments,
@@ -398,10 +615,6 @@ def admin_tournaments(request):
 
 @admin_required
 def admin_tournament_create(request):
-    """
-    Shows a separate page for creating a new tournament.
-    After successful POST, redirects back to /custom_admin/tournaments/.
-    """
     if request.method == 'POST':
         date = request.POST.get('date')
         name = request.POST.get('name')
@@ -490,12 +703,20 @@ def admin_games(request, tournament_id):
             return redirect('admin_games', tournament_id=tournament.id)
     else:
         form = GameForm(tournament=tournament)
+
+    all_finished = True
+    for g in games:
+        if g.team1_score is None or g.team2_score is None:
+            all_finished = False
+            break
+
     standings = compute_tournament_standings(tournament)
     return render(request, 'admin_games.html', {
         'tournament': tournament,
         'games': games,
         'form': form,
         'standings': standings,
+        'all_finished': all_finished,
     })
 
 @admin_required
@@ -514,9 +735,6 @@ def admin_game_edit(request, game_id):
 
 @admin_required
 def update_game_score(request, game_id):
-    """
-    For admin's manual updating of scores, if needed.
-    """
     game = get_object_or_404(Game, id=game_id)
     if request.method == 'POST':
         team1_score = request.POST.get('team1_score')
@@ -567,7 +785,7 @@ def create_schedule(request, tournament_id):
                 {"team_a": 2, "team_b": 0, "ref": 1},
                 {"team_a": 1, "team_b": 2, "ref": 0},
             ]
-        else:
+        else:  # count == 4
             pattern = [
                 {"team_a": 0, "team_b": 1, "ref": 3},
                 {"team_a": 3, "team_b": 2, "ref": 0},
@@ -627,7 +845,6 @@ def create_schedule(request, tournament_id):
     messages.success(request, "Schedule created successfully.")
     return redirect('admin_tournament_detail', tournament_id=tournament.id)
 
-
 @admin_required
 def admin_team_players(request, team_id):
     team = get_object_or_404(User, id=team_id, is_staff=False)
@@ -669,3 +886,8 @@ def admin_player_delete(request, player_id):
     player.delete()
     messages.success(request, "Player deleted successfully.")
     return redirect('admin_team_players', team_id=team_id)
+
+@admin_required
+def admin_official_assignments(request):
+    assignments = OfficialAssignment.objects.select_related('game','game__tournament').order_by('license_number')
+    return render(request, 'admin_official_assignments.html', {'assignments': assignments})

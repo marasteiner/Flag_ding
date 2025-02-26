@@ -7,19 +7,25 @@
     {% endif %}
 </div>
 
-<h2>Overall Team Standings</h2>
+<h2>Overall Team Standings (Best 5 Tournaments)</h2>
 {% if overall_standings %}
     <table border="1" cellspacing="0" cellpadding="5">
         <tr>
             <th>Rank</th>
             <th>Team</th>
-            <th>Total Final Points</th>
+            <th>Total Points</th>
+            <th>PF</th>
+            <th>PA</th>
+            <th>PD</th>
         </tr>
         {% for entry in overall_standings %}
         <tr>
-            <td>{{ forloop.counter }}</td>
+            <td>{{ entry.rank }}</td>
             <td>{{ entry.team.first_name }} ({{ entry.team.username }})</td>
-            <td>{{ entry.total_final_points }}</td>
+            <td>{{ entry.total_points }}</td>
+            <td>{{ entry.pf }}</td>
+            <td>{{ entry.pa }}</td>
+            <td>{{ entry.pd }}</td>
         </tr>
         {% endfor %}
     </table>

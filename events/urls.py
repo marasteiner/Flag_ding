@@ -17,14 +17,15 @@ urlpatterns = [
     path('tournaments/apply/<int:tournament_id>/', views.apply_tournament, name='apply_tournament'),
     path('tournaments/detail/<int:tournament_id>/', views.tournament_detail, name='tournament_detail'),
 
-    path('', views.index, name='index'),
-    path('login/', views.CustomLoginView.as_view(template_name='login.html'), name='login'),
-    path('logout/', views.CustomLogoutView.as_view(), name='logout'),
-
-     path('scorecard/', views.scorecard_home, name='scorecard_home'),
+    # Scorecard URLs
+    path('scorecard/', views.scorecard_home, name='scorecard_home'),
     path('scorecard/coin_toss/<int:game_id>/', views.scorecard_coin_toss, name='scorecard_coin_toss'),
     path('scorecard/live/<int:game_id>/', views.scorecard_live, name='scorecard_live'),
     path('scorecard/<int:game_id>/record_event/', views.record_score_event, name='record_score_event'),
     path('scorecard/<int:game_id>/switch_offense/', views.switch_offense, name='switch_offense'),
+    # NEW ROUTE FOR DELETION
+    path('scorecard/<int:game_id>/delete_event/<int:event_id>/', views.delete_score_event, name='delete_score_event'),
+
+    # AJAX scoreboard data
     path('api/scoreboard/<int:tournament_id>/', views.scoreboard_data, name='scoreboard_data'),
 ]

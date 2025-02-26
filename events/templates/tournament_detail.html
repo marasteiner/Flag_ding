@@ -34,25 +34,34 @@
     <p>No schedule exists.</p>
 {% endif %}
 
-<h3>Final Standings</h3>
-{% if standings %}
-    <table border="1" cellspacing="0" cellpadding="5">
-        <tr>
-            <th>Rank</th>
-            <th>Team</th>
-            <th>Raw Points</th>
-            <th>Final Points</th>
-        </tr>
-        {% for entry in standings %}
-        <tr>
-            <td>{{ entry.rank }}</td>
-            <td>{{ entry.team.first_name }} ({{ entry.team.username }})</td>
-            <td>{{ entry.raw_points }}</td>
-            <td>{{ entry.final_points }}</td>
-        </tr>
-        {% endfor %}
-    </table>
+<!-- Show final standings only if all games are finished -->
+{% if all_finished %}
+    <h3>Final Standings</h3>
+    {% if standings %}
+        <table border="1" cellspacing="0" cellpadding="5">
+            <tr>
+                <th>Rank</th>
+                <th>Team</th>
+                <th>Points</th>
+                <th>PF</th>
+                <th>PA</th>
+                <th>PD</th>
+            </tr>
+            {% for entry in standings %}
+            <tr>
+                <td>{{ entry.rank }}</td>
+                <td>{{ entry.team.first_name }} ({{ entry.team.username }})</td>
+                <td>{{ entry.points }}</td>
+                <td>{{ entry.pf }}</td>
+                <td>{{ entry.pa }}</td>
+                <td>{{ entry.pd }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+    {% else %}
+        <p>No standings available.</p>
+    {% endif %}
 {% else %}
-    <p>No standings available.</p>
+    <p>Not all games are finished yet, so final standings are not available.</p>
 {% endif %}
 {% endblock %}

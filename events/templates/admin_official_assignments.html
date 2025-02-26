@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Einsätze Schiedsrichter</h2>
+
+{% if assignments %}
+<table border="1" cellspacing="0" cellpadding="5">
+    <tr>
+        <th>License</th>
+        <th>Name</th>
+        <th>Role</th>
+        <th>Game</th>
+        <th>Date/Time</th>
+        <th>Tournament</th>
+    </tr>
+    {% for a in assignments %}
+    <tr>
+        <td>{{ a.license_number }}</td>
+        <td>{{ a.name }}</td>
+        <td>{{ a.get_role_display }}</td>
+        <td>{{ a.game.team1.username }} vs {{ a.game.team2.username }}</td>
+        <td>{{ a.game.start_time|date:"Y-m-d H:i" }}</td>
+        <td>{{ a.game.tournament.name }}</td>
+    </tr>
+    {% endfor %}
+</table>
+{% else %}
+<p>No official assignments found.</p>
+{% endif %}
+
+<p><a href="{% url 'admin_dashboard' %}">Back to Admin Dashboard</a></p>
+{% endblock %}
